@@ -411,10 +411,19 @@ EXPECTED_COLUMNS = {
 def _add_missing_columns():
     with closing(db()) as con:
         for table, columns in EXPECTED_COLUMNS.items():
-            existing = {row[1] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+            tbl_exists = con.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ).fetchone()
+            if not tbl_exists:
+                continue
+            
+            existing = {str(row[1]).lower() for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
             for column, definition in columns.items():
-                if column not in existing:
-                    con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                if column.lower() not in existing:
+                    try:
+                        con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                    except Exception as e:
+                        print(f"Note: Could not add column {column} to {table}: {e}")
         con.commit()
 
     with closing(db()) as con:
@@ -425,7 +434,7 @@ def _add_missing_columns():
         con.execute("UPDATE drives SET salary_max=0 WHERE salary_max IS NULL")
         con.execute("UPDATE messages SET read=0 WHERE read IS NULL")
 
-        offer_cols = {row[1] for row in con.execute("PRAGMA table_info(offers)").fetchall()}
+        offer_cols = {str(row[1]).lower() for row in con.execute("PRAGMA table_info(offers)").fetchall()}
         if "id" in offer_cols:
             con.execute("""
                 UPDATE offers
@@ -433,7 +442,7 @@ def _add_missing_columns():
                 WHERE id IS NULL OR id=''
             """)
 
-        audit_cols = {row[1] for row in con.execute("PRAGMA table_info(audit)").fetchall()}
+        audit_cols = {str(row[1]).lower() for row in con.execute("PRAGMA table_info(audit)").fetchall()}
         if "id" in audit_cols:
             con.execute("""
                 UPDATE audit
